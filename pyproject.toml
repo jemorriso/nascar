@@ -1,0 +1,16 @@
+[tool.poetry]
+name = "nascar"
+version = "0.1.0"
+description = ""
+authors = ["Jeremy Morrison <jeremy.morrison36@gmail.com>"]
+
+[tool.poetry.dependencies]
+python = "^3.9"
+requests = "^2.25.1"
+
+[tool.poetry.dev-dependencies]
+pytest = "^6.2.3"
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"
