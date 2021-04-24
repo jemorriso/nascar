@@ -1,11 +1,16 @@
 import requests
 import time
 import logging
+from sys import stdout
+from datetime import datetime
+import csv
 
 logger = logging.getLogger(__name__)
+logger.addHandler(logging.StreamHandler(stream=stdout))
 
 # verify this endpoint
-API = "http://cf.nascar.com/live/feeds/lap-times.json"
+# API = "http://cf.nascar.com/live/feeds/lap-times.json"
+API = "http://cf.nascar.com/cacher/2021/2/5095/lap-times.json"
 INTERVAL = 5
 
 
@@ -45,14 +50,16 @@ class Driver:
     def last_lap():
         pass
 
-    def update_lap_times(self, laps_json):
+    def get_new_laps(self, laps_json):
         old_laps = set(self.laps.laps)
+        old_lap_numbers = set([lap.number for lap in old_laps])
         updated_laps = set(Laps(laps_json).laps)
-        new_laps = updated_laps.difference(old_laps)
+        new_laps = [lap for lap in updated_laps if lap.number not in old_lap_numbers]
         for lap in new_laps:
             logger.info(f"Driver: {self.name}, {str(lap)}")
+            print(f"Driver: {self.name}, {str(lap)}")
 
-        self.laps.add_laps(new_laps)
+        return new_laps
 
 
 class Drivers:
@@ -74,29 +81,53 @@ class Drivers:
         return drivers
 
     def update_lap_times(self, laps_json):
+        drivers_new_laps = []
         for driver_json in laps_json:
-            self.drivers[driver_json["NASCARDriverID"]].update_lap_times(
-                driver_json["Laps"]
-            )
-            pass
+            driver = self.drivers[driver_json["NASCARDriverID"]]
+            new_laps = driver.get_new_laps(driver_json["Laps"])
+            driver.laps.add_laps(new_laps)
+            drivers_new_laps.append((driver, new_laps))
+        return drivers_new_laps
+
+
+def transform_laps(driver_laps):
+    dict_laps = [
+        {
+            "Name": driver.name,
+            "Lap Number": lap.number,
+            "Running Position": lap.position,
+            "Lap Time": lap.time,
+        }
+        for driver, lap in driver_laps
+    ]
+    return dict_laps
+
+
+def append_csv(dict_laps, fname):
+    with open(fname, "a") as f:
+        writer = csv.DictWriter(f, fieldnames=dict_laps[0].keys())
+        writer.writeheader()
+        writer.writerows(fname)
 
 
 def get_lap_data():
-    # call API endpoint
     res = requests.get(API)
     return res.json()
-    pass
 
 
-def main():
+def main(drivers, fname):
     while True:
-        print("Hi my name is: !")
+        data = get_lap_data()
+        drivers_new_laps = drivers.update_lap_times(data["laps"])
+        if drivers_new_laps:
+            dict_laps = transform_laps(drivers_new_laps)
+            append_csv(dict_laps, fname)
         time.sleep(INTERVAL)
 
 
 if __name__ == "__main__":
     # use loop here waiting for race to start
     data = get_lap_data()
-    #
+    fname = f"Nascar-{datetime.now().date().isoformat()}"
     drivers = Drivers(data["laps"])
-    main()
+    main(drivers, fname)
