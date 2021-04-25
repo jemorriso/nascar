@@ -4,14 +4,15 @@ import logging
 from sys import stdout
 from datetime import datetime
 import csv
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
 logger.addHandler(logging.StreamHandler(stream=stdout))
 
-# verify this endpoint
 # API = "http://cf.nascar.com/live/feeds/lap-times.json"
-API = "http://cf.nascar.com/cacher/2021/2/5095/lap-times.json"
+API = "http://cf.nascar.com/cacher/2021/1/5021/lap-times.json"
 INTERVAL = 5
+DATA_PATH = "./data/nascar"
 
 
 class Lap:
@@ -90,24 +91,40 @@ class Drivers:
         return drivers_new_laps
 
 
+def sort_laps(dict_laps):
+    return sorted(dict_laps, key=lambda lap: (lap["Name"], lap["Lap Number"]))
+
+
 def transform_laps(driver_laps):
-    dict_laps = [
-        {
-            "Name": driver.name,
-            "Lap Number": lap.number,
-            "Running Position": lap.position,
-            "Lap Time": lap.time,
-        }
-        for driver, lap in driver_laps
-    ]
+    dict_laps = []
+    for driver, laps in driver_laps:
+        for lap in laps:
+            dict_laps.append(
+                {
+                    "Name": driver.name,
+                    "Lap Number": lap.number,
+                    "Running Position": lap.position,
+                    "Lap Time": lap.time,
+                }
+            )
+    dict_laps = sort_laps(dict_laps)
     return dict_laps
 
 
-def append_csv(dict_laps, fname):
-    with open(fname, "a") as f:
-        writer = csv.DictWriter(f, fieldnames=dict_laps[0].keys())
-        writer.writeheader()
-        writer.writerows(fname)
+def check_data_path(fname):
+    Path(DATA_PATH).mkdir(parents=True, exist_ok=True)
+    return Path(DATA_PATH) / fname
+
+
+def init_csv(f, header_keys):
+    writer = csv.DictWriter(f, fieldnames=header_keys)
+    writer.writeheader()
+    return writer
+
+
+def append_csv(dict_laps, writer, f):
+    writer.writerows(dict_laps)
+    f.flush()
 
 
 def get_lap_data():
@@ -115,19 +132,20 @@ def get_lap_data():
     return res.json()
 
 
-def main(drivers, fname):
+def main(drivers, writer, f):
     while True:
         data = get_lap_data()
         drivers_new_laps = drivers.update_lap_times(data["laps"])
         if drivers_new_laps:
             dict_laps = transform_laps(drivers_new_laps)
-            append_csv(dict_laps, fname)
+            append_csv(dict_laps, writer, f)
         time.sleep(INTERVAL)
 
 
 if __name__ == "__main__":
-    # use loop here waiting for race to start
     data = get_lap_data()
-    fname = f"Nascar-{datetime.now().date().isoformat()}"
+    fpath = check_data_path(f"{datetime.now().date().isoformat()}.csv")
     drivers = Drivers(data["laps"])
-    main(drivers, fname)
+    with open(fpath, "a") as f:
+        writer = init_csv(f, ["Name", "Lap Number", "Running Position", "Lap Time"])
+        main(drivers, writer, f)

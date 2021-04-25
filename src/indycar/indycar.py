@@ -6,12 +6,14 @@ from datetime import datetime
 import csv
 import re
 import json
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
 logger.addHandler(logging.StreamHandler(stream=stdout))
 
 API = "http://racecontrol.indycar.com/xml/timingscoring.json"
 INTERVAL = 5
+DATA_PATH = "./data/indycar"
 
 
 class Lap:
@@ -93,6 +95,10 @@ class Drivers:
         return drivers_new_laps
 
 
+def sort_laps(dict_laps):
+    return sorted(dict_laps, key=lambda lap: (lap["Name"], lap["Lap Number"]))
+
+
 def transform_laps(driver_laps):
     dict_laps = []
     for driver, laps in driver_laps:
@@ -105,7 +111,13 @@ def transform_laps(driver_laps):
                     "Lap Time": lap.time,
                 }
             )
+    dict_laps = sort_laps(dict_laps)
     return dict_laps
+
+
+def check_data_path(fname):
+    Path(DATA_PATH).mkdir(parents=True, exist_ok=True)
+    return Path(DATA_PATH) / fname
 
 
 def init_csv(f, header_keys):
@@ -114,8 +126,9 @@ def init_csv(f, header_keys):
     return writer
 
 
-def append_csv(dict_laps, writer):
+def append_csv(dict_laps, writer, f):
     writer.writerows(dict_laps)
+    f.flush()
 
 
 def get_json(text):
@@ -130,20 +143,20 @@ def get_lap_data():
     return get_json(res.text)
 
 
-def main(drivers, writer):
+def main(drivers, writer, f):
     while True:
         data = get_lap_data()
         drivers_new_laps = drivers.update_lap_times(data["timing_results"]["Item"])
         if drivers_new_laps:
             dict_laps = transform_laps(drivers_new_laps)
-            append_csv(dict_laps, writer)
+            append_csv(dict_laps, writer, f)
         time.sleep(INTERVAL)
 
 
 if __name__ == "__main__":
     data = get_lap_data()
-    fname = f"IndyCar-{datetime.now().date().isoformat()}.csv"
+    fpath = check_data_path(f"{datetime.now().date().isoformat()}.csv")
     drivers = Drivers(data["timing_results"]["Item"])
-    with open(fname, "a") as f:
-        writer = init_csv(f, [])
-        main(drivers, writer)
+    with open(fpath, "a") as f:
+        writer = init_csv(f, ["Name", "Lap Number", "Running Position", "Lap Time"])
+        main(drivers, writer, f)
