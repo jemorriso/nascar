@@ -168,5 +168,5 @@ def main(drivers, fpath):
 if __name__ == "__main__":
     data = get_lap_data()
     fpath = check_data_path(f"{datetime.now().date().isoformat()}.xlsx")
-    drivers = Drivers(data["laps"])
+    drivers = Drivers(data["timing_results"]["Item"])
     main(drivers, fpath)
