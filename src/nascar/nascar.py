@@ -3,14 +3,18 @@ import time
 import logging
 from sys import stdout
 from datetime import datetime
-import csv
 from pathlib import Path
+import pandas as pd
+from pandas import ExcelWriter
+import json
 
 logger = logging.getLogger(__name__)
 logger.addHandler(logging.StreamHandler(stream=stdout))
 
-# API = "http://cf.nascar.com/live/feeds/lap-times.json"
-API = "http://cf.nascar.com/cacher/2021/1/5021/lap-times.json"
+with open("config.json", "r") as f:
+    config = json.load(f)
+API = config["NASCAR_API"]
+
 INTERVAL = 5
 DATA_PATH = "./data/nascar"
 
@@ -111,15 +115,18 @@ def transform_laps(driver_laps):
     return dict_laps
 
 
+def unstack_laps(dict_laps):
+    stacked = pd.DataFrame(dict_laps)
+    unstacked = stacked.pivot(
+        index="Lap Number", columns="Name", values=["Lap Time", "Running Position"]
+    )
+    # For some reason Nascar returns Lap 0 times, but it's not filled in.
+    return unstacked.drop([0])
+
+
 def check_data_path(fname):
     Path(DATA_PATH).mkdir(parents=True, exist_ok=True)
     return Path(DATA_PATH) / fname
-
-
-def init_csv(f, header_keys):
-    writer = csv.DictWriter(f, fieldnames=header_keys)
-    writer.writeheader()
-    return writer
 
 
 def append_csv(dict_laps, writer, f):
@@ -127,25 +134,30 @@ def append_csv(dict_laps, writer, f):
     f.flush()
 
 
+def write_dataframe(df, fpath):
+    with ExcelWriter(fpath) as writer:
+        df["Lap Time"].to_excel(writer, sheet_name="Lap Time")
+        df["Running Position"].to_excel(writer, sheet_name="Running Position")
+
+
 def get_lap_data():
     res = requests.get(API)
     return res.json()
 
 
-def main(drivers, writer, f):
+def main(drivers, fpath):
     while True:
         data = get_lap_data()
         drivers_new_laps = drivers.update_lap_times(data["laps"])
         if drivers_new_laps:
             dict_laps = transform_laps(drivers_new_laps)
-            append_csv(dict_laps, writer, f)
+            unstacked = unstack_laps(dict_laps)
+            write_dataframe(unstacked, fpath)
         time.sleep(INTERVAL)
 
 
 if __name__ == "__main__":
     data = get_lap_data()
-    fpath = check_data_path(f"{datetime.now().date().isoformat()}.csv")
+    fpath = check_data_path(f"{datetime.now().date().isoformat()}.xlsx")
     drivers = Drivers(data["laps"])
-    with open(fpath, "a") as f:
-        writer = init_csv(f, ["Name", "Lap Number", "Running Position", "Lap Time"])
-        main(drivers, writer, f)
+    main(drivers, fpath)
