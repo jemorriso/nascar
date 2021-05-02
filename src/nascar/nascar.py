@@ -121,7 +121,10 @@ def unstack_laps(dict_laps):
         index="Lap Number", columns="Name", values=["Lap Time", "Running Position"]
     )
     # For some reason Nascar returns Lap 0 times, but it's not filled in.
-    return unstacked.drop([0])
+    try:
+        return unstacked.drop([0])
+    except KeyError:
+        return unstacked
 
 
 def check_data_path(fname):
@@ -150,9 +153,12 @@ def main(drivers, fpath):
         data = get_lap_data()
         drivers_new_laps = drivers.update_lap_times(data["laps"])
         if drivers_new_laps:
-            dict_laps = transform_laps(drivers_new_laps)
-            unstacked = unstack_laps(dict_laps)
-            write_dataframe(unstacked, fpath)
+            # dict_laps = transform_laps(drivers_new_laps)
+            all_laps = [(d, d.laps.laps) for id, d in drivers.drivers.items()]
+            dict_laps = transform_laps(all_laps)
+            if dict_laps:
+                unstacked = unstack_laps(dict_laps)
+                write_dataframe(unstacked, fpath)
         time.sleep(INTERVAL)
 
 
